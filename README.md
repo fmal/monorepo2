@@ -3,8 +3,8 @@
 <!-- prettier-ignore-start -->
 | Branch | Status |
 | --- | :---: |
-| next | ![CI Workflow](https://github.com/fmal/monorepo2/workflows/ci.yml/badge.svg?branch=next) |
-| main | ![CI Workflow](https://github.com/fmal/monorepo2/workflows/ci.yml/badge.svg) |
+| next | ![CI Workflow](https://github.com/fmal/monorepo2/actions/workflows/ci.yml/badge.svg?branch=next) |
+| main | ![CI Workflow](https://github.com/fmal/monorepo2/actions/workflows/ci.yml/badge.svg) |
 <!-- prettier-ignore-end -->
 
 The monorepo is installed using [yarn](https://github.com/yarnpkg/berry), and relies on [yarn workspaces](https://yarnpkg.com/features/workspaces).
