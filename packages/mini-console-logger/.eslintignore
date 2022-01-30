@@ -1,0 +1,5 @@
+# this negated pattern is currently needed to lint .babelrc.js
+# see: https://github.com/eslint/eslint/issues/4828
+!.*
+dist/
+CHANGELOG.md

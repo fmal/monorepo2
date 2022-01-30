@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - next
+  pull_request:
+    branches:
+      - main
+      - next
+  workflow_dispatch:
+
+env:
+  NPM_PUBLISH_TOKEN: ${{ secrets.PUBLISH_NPM_TOKEN }}
+  HUSKY: 0
+
+jobs:
+  build-and-test:
+    name: Build and test on ${{ matrix.os }} - Node v${{ matrix.node-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macOS-latest]
+        node-version: [16]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v2
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Validate and install deps
+        run: |
+          yarn dedupe --check
+          yarn install --immutable --immutable-cache
+      - name: Run build
+        run: |
+          yarn run build
+      - name: Run tests
+        run: |
+          yarn run test
+
+  pr-info:
+    name: 'Store and upload PR info'
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    env:
+      PR_NUMBER_FILE: '.PR_NUMBER'
+      PR_ACTION_FILE: '.PR_ACTION'
+    steps:
+      - name: Store PR info
+        run: |
+          echo "${{ github.event.number }}" > $PR_NUMBER_FILE
+          echo "${{ github.event.action }}" > $PR_ACTION_FILE
+      - uses: actions/upload-artifact@v2
+        with:
+          name: pr-number
+          path: '${{ env.PR_NUMBER_FILE }}'
+          retention-days: 1
+      - uses: actions/upload-artifact@v2
+        with:
+          name: pr-action
+          path: '${{ env.PR_ACTION_FILE }}'
+          retention-days: 1
+
+  publish_release_preview:
+    name: Publish release preview
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name == 'pull_request'
+    env:
+      ARTIFACT_DIR: ./artifacts
+      PRERELEASE: ${{ github.base_ref == 'next' }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v2
+        with:
+          node-version: 16
+      - name: Create artifacts directory
+        run: mkdir -p ${{ env.ARTIFACT_DIR }}
+      - name: Install deps
+        run: yarn install --immutable --immutable-cache
+      - name: Run Monodeploy in dry run mode
+        id: run-monodeploy
+        run: |
+          echo "<!-- MONODEPLOY:BELOW -->" > ${{ env.ARTIFACT_DIR }}/CHANGELOG.md
+          yarn run release \
+            --dry-run \
+            --plugins \
+            --git-base-branch origin/${{ github.base_ref }} \
+            --prepend-changelog ${{ env.ARTIFACT_DIR }}/CHANGELOG.md \
+            --force-write-change-files
+          changelog_body=$(cat ${{ env.ARTIFACT_DIR }}/CHANGELOG.md)
+          changelog_body="${changelog_body//'%'/'%25'}"
+          changelog_body="${changelog_body//$'\n'/'%0A'}"
+          changelog_body="${changelog_body//$'\r'/'%0D'}"
+          echo ::set-output name=changelog::$changelog_body
+      - name: Check for changelog comment
+        uses: peter-evans/find-comment@v1
+        id: found-comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: <!-- MONODEPLOY_CHANGELOG_PREVIEW -->
+      - name: Post changelog to PR
+        uses: peter-evans/create-or-update-comment@v1
+        with:
+          comment-id: ${{ steps.found-comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          edit-mode: replace
+          body: |
+            <!-- MONODEPLOY_CHANGELOG_PREVIEW -->
+            # Monodeploy Publish Preview
+            This Pull Request introduces the following changes:
+            ${{ steps.run-monodeploy.outputs.changelog }}
